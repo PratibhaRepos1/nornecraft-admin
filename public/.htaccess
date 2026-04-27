@@ -1,6 +1,6 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
+  RewriteBase /admin/
 
   # Force HTTPS
   RewriteCond %{HTTPS} off
@@ -9,7 +9,7 @@
   # SPA fallback
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule . /index.html [L]
+  RewriteRule . /admin/index.html [L]
 </IfModule>
 
 # Tell crawlers not to index this admin subdomain at the HTTP-header level.
