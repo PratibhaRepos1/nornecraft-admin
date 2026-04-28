@@ -8,9 +8,7 @@ interface AdminCreds {
   password: string;
 }
 
-const API_BASE = import.meta.env.DEV
-  ? 'http://localhost:3000'
-  : 'https://api.nornecraft.com';
+const API_BASE = 'https://nornecraft-api.vercel.app';
 
 const PRODUCTS_URL = `${API_BASE}/api/products`;
 const VERIFY_URL = `${API_BASE}/api/verify`;
