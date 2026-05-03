@@ -272,7 +272,7 @@ function AddProduct() {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="price">Price (USD)</label>
+                  <label htmlFor="price">Price (NOK)</label>
                   <input
                     type="number"
                     id="price"
