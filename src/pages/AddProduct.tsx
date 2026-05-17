@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import './AddProduct.css';
 
 const ADMIN_CREDS_KEY = 'nornecraft-admin-creds';
@@ -12,8 +12,12 @@ const API_BASE = 'https://nornecraft-api.vercel.app';
 
 const PRODUCTS_URL = `${API_BASE}/api/products`;
 const VERIFY_URL = `${API_BASE}/api/verify`;
+const UPLOAD_URL = `${API_BASE}/api/upload`;
 
 const IMAGE_BASE_URL = 'https://nornecraft.com/products/';
+
+const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png'];
+const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png'];
 
 function buildImageUrl(imageInput: string): string {
   const trimmed = imageInput.trim();
@@ -56,6 +60,9 @@ function AddProduct() {
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function persistCreds(creds: AdminCreds) {
     try {
@@ -112,6 +119,78 @@ function AddProduct() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
+  function resetFileInput() {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImageError(null);
+
+    const lowerName = file.name.toLowerCase();
+    const ext = lowerName.slice(lowerName.lastIndexOf('.'));
+    const mimeOk = ALLOWED_IMAGE_MIME.includes(file.type.toLowerCase());
+    const extOk = ALLOWED_IMAGE_EXT.includes(ext);
+    if (!mimeOk && !extOk) {
+      setImageError('Only JPEG, JPG, and PNG images are allowed.');
+      resetFileInput();
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+
+      const headers: Record<string, string> = {};
+      if (adminCreds) {
+        headers['Authorization'] = `Basic ${btoa(`${adminCreds.username}:${adminCreds.password}`)}`;
+      }
+
+      const res = await fetch(UPLOAD_URL, {
+        method: 'POST',
+        headers,
+        body: fd,
+      });
+
+      const data = await res.json().catch(() => ({} as { filename?: string; url?: string; error?: string }));
+
+      if (res.status === 403) {
+        clearCreds();
+        throw new Error(data.error || 'Forbidden — please sign in again.');
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to upload image.');
+      }
+
+      const filename =
+        data.filename ||
+        (typeof data.url === 'string' ? data.url.split('/').pop() : '') ||
+        '';
+
+      if (!filename) {
+        throw new Error('Upload succeeded but no filename was returned.');
+      }
+
+      setFormData((prev) => ({ ...prev, image: filename }));
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Failed to upload image.';
+      setImageError(text);
+      resetFileInput();
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function handleClearImage() {
+    setFormData((prev) => ({ ...prev, image: '' }));
+    setImageError(null);
+    resetFileInput();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -153,6 +232,8 @@ function AddProduct() {
 
       setMessage({ kind: 'success', text: `Product "${data.name}" added successfully.` });
       setFormData(initialForm);
+      setImageError(null);
+      resetFileInput();
     } catch (err) {
       const text = err instanceof Error ? err.message : 'Failed to add product';
       setMessage({ kind: 'error', text });
@@ -319,20 +400,46 @@ function AddProduct() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="image">Image Name</label>
+                <label htmlFor="imageFile">Product Image</label>
                 <input
-                  type="text"
-                  id="image"
-                  name="image"
-                  value={formData.image}
-                  onChange={handleChange}
-                  placeholder="horn_mug.jpeg"
+                  type="file"
+                  id="imageFile"
+                  ref={fileInputRef}
+                  accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                  onChange={handleImageUpload}
+                  disabled={uploadingImage}
                 />
                 <small className="form-hint">
-                  Upload the image to <code>/public_html/products/</code> on Hostinger, then enter
-                  just the filename here (e.g. <code>horn_mug.jpeg</code>). It will be saved as{' '}
-                  <code>{IMAGE_BASE_URL}&lt;filename&gt;</code>.
+                  Accepted formats: JPEG, JPG, PNG. The file is uploaded to{' '}
+                  <code>{IMAGE_BASE_URL}</code> and the filename is saved with the product.
                 </small>
+                {uploadingImage && (
+                  <small className="form-hint">Uploading image...</small>
+                )}
+                {imageError && (
+                  <div className="add-product-message error">{imageError}</div>
+                )}
+                {formData.image && !uploadingImage && (
+                  <div className="image-preview">
+                    <img
+                      src={buildImageUrl(formData.image)}
+                      alt="Uploaded preview"
+                      className="image-preview-img"
+                    />
+                    <div className="image-preview-meta">
+                      <small className="form-hint">
+                        Saved as <code>{buildImageUrl(formData.image)}</code>
+                      </small>
+                      <button
+                        type="button"
+                        className="add-product-signout"
+                        onClick={handleClearImage}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -351,7 +458,11 @@ function AddProduct() {
                 <div className={`add-product-message ${message.kind}`}>{message.text}</div>
               )}
 
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={submitting || uploadingImage}
+              >
                 {submitting ? 'Saving...' : 'Add Product'}
               </button>
             </form>
