@@ -62,6 +62,8 @@ function AddProduct() {
   const [signInError, setSignInError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [imagePreviewTs, setImagePreviewTs] = useState<number>(0);
+  const [imagePreviewBroken, setImagePreviewBroken] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function persistCreds(creds: AdminCreds) {
@@ -176,6 +178,8 @@ function AddProduct() {
       }
 
       setFormData((prev) => ({ ...prev, image: filename }));
+      setImagePreviewTs(Date.now());
+      setImagePreviewBroken(false);
     } catch (err) {
       const text = err instanceof Error ? err.message : 'Failed to upload image.';
       setImageError(text);
@@ -188,7 +192,13 @@ function AddProduct() {
   function handleClearImage() {
     setFormData((prev) => ({ ...prev, image: '' }));
     setImageError(null);
+    setImagePreviewBroken(false);
     resetFileInput();
+  }
+
+  function handleRetryPreview() {
+    setImagePreviewTs(Date.now());
+    setImagePreviewBroken(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -233,6 +243,7 @@ function AddProduct() {
       setMessage({ kind: 'success', text: `Product "${data.name}" added successfully.` });
       setFormData(initialForm);
       setImageError(null);
+      setImagePreviewBroken(false);
       resetFileInput();
     } catch (err) {
       const text = err instanceof Error ? err.message : 'Failed to add product';
@@ -421,14 +432,37 @@ function AddProduct() {
                 )}
                 {formData.image && !uploadingImage && (
                   <div className="image-preview">
-                    <img
-                      src={buildImageUrl(formData.image)}
-                      alt="Uploaded preview"
-                      className="image-preview-img"
-                    />
+                    {!imagePreviewBroken ? (
+                      <img
+                        src={`${buildImageUrl(formData.image)}${imagePreviewTs ? `?t=${imagePreviewTs}` : ''}`}
+                        alt="Uploaded preview"
+                        className="image-preview-img"
+                        onError={() => setImagePreviewBroken(true)}
+                        onLoad={() => setImagePreviewBroken(false)}
+                      />
+                    ) : (
+                      <div className="image-preview-placeholder">
+                        Preview unavailable yet — the file may still be propagating.
+                        {' '}
+                        <button
+                          type="button"
+                          className="add-product-signout"
+                          onClick={handleRetryPreview}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
                     <div className="image-preview-meta">
                       <small className="form-hint">
-                        Saved as <code>{buildImageUrl(formData.image)}</code>
+                        Saved as{' '}
+                        <a
+                          href={buildImageUrl(formData.image)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <code>{buildImageUrl(formData.image)}</code>
+                        </a>
                       </small>
                       <button
                         type="button"

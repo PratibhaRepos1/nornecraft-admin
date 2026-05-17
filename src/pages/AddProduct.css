@@ -127,6 +127,16 @@
   flex-wrap: wrap;
 }
 
+.image-preview-placeholder {
+  max-width: 320px;
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--light-gray);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--brown-dark);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 600px) {
   .add-product-wrapper {
     padding: 1.5rem;
