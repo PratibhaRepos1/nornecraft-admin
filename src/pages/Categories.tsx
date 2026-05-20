@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { type AdminCreds, authedFetch, clearStoredCreds } from '../lib/auth';
 import { CATEGORIES_URL, type Category } from '../lib/api';
+import type { ToastKind } from '../components/Toast';
 
 interface CategoriesProps {
   creds: AdminCreds;
   onSignedOut: () => void;
+  showToast: (text: string, kind: ToastKind) => void;
 }
 
 interface CategoryForm {
@@ -15,7 +17,7 @@ interface CategoryForm {
 
 const emptyForm: CategoryForm = { name: '', slug: '', description: '' };
 
-function Categories({ creds, onSignedOut }: CategoriesProps) {
+function Categories({ creds, onSignedOut, showToast }: CategoriesProps) {
   const [items, setItems] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -23,7 +25,6 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
   const [form, setForm] = useState<CategoryForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   async function loadCategories() {
     setLoading(true);
@@ -31,8 +32,9 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
     try {
       const res = await fetch(CATEGORIES_URL);
       if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);
-      const data = (await res.json()) as Category[];
-      setItems(Array.isArray(data) ? data : []);
+      const data = (await res.json()) as Category[] | { categories?: Category[] };
+      const list = Array.isArray(data) ? data : data.categories ?? [];
+      setItems(list);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load categories');
     } finally {
@@ -60,7 +62,6 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
       slug: cat.slug ?? '',
       description: cat.description ?? '',
     });
-    setMessage(null);
   }
 
   function handleAuthError(status: number, fallback: string): string {
@@ -75,7 +76,6 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    setMessage(null);
 
     const body = JSON.stringify({
       name: form.name.trim(),
@@ -85,6 +85,7 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
 
     const url = editingId == null ? CATEGORIES_URL : `${CATEGORIES_URL}/${editingId}`;
     const method = editingId == null ? 'POST' : 'PUT';
+    const wasEditing = editingId != null;
 
     try {
       const res = await authedFetch(creds, url, {
@@ -98,17 +99,14 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
         throw new Error(handleAuthError(res.status, data.error || 'Failed to save category'));
       }
 
-      setMessage({
-        kind: 'success',
-        text: editingId == null ? 'Category added.' : 'Category updated.',
-      });
+      showToast(wasEditing ? 'Category updated.' : 'Category added.', 'success');
       resetForm();
       await loadCategories();
     } catch (err) {
-      setMessage({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Failed to save category',
-      });
+      showToast(
+        err instanceof Error ? err.message : 'Failed to save category',
+        'error',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -118,21 +116,20 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
     if (!window.confirm(`Delete category "${cat.name}"? Products in this category may be affected.`)) {
       return;
     }
-    setMessage(null);
     try {
       const res = await authedFetch(creds, `${CATEGORIES_URL}/${cat.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({} as { error?: string }));
         throw new Error(handleAuthError(res.status, data.error || 'Failed to delete category'));
       }
-      setMessage({ kind: 'success', text: `Category "${cat.name}" deleted.` });
+      showToast(`Category "${cat.name}" deleted.`, 'success');
       if (editingId === cat.id) resetForm();
       await loadCategories();
     } catch (err) {
-      setMessage({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Failed to delete category',
-      });
+      showToast(
+        err instanceof Error ? err.message : 'Failed to delete category',
+        'error',
+      );
     }
   }
 
@@ -181,10 +178,6 @@ function Categories({ creds, onSignedOut }: CategoriesProps) {
               placeholder="Short category description..."
             />
           </div>
-
-          {message && (
-            <div className={`add-product-message ${message.kind}`}>{message.text}</div>
-          )}
 
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={submitting}>

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import './pages/AddProduct.css';
 import { type AdminCreds, clearStoredCreds, readStoredCreds } from './lib/auth';
 import SignIn from './components/SignIn';
+import Toast, { type ToastKind, type ToastMessage } from './components/Toast';
 import Products from './pages/Products';
 import Categories from './pages/Categories';
 
@@ -10,6 +11,15 @@ type Tab = 'products' | 'categories';
 function App() {
   const [creds, setCreds] = useState<AdminCreds | null>(() => readStoredCreds());
   const [tab, setTab] = useState<Tab>('products');
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const toastIdRef = useRef(0);
+
+  const showToast = useCallback((text: string, kind: ToastKind) => {
+    toastIdRef.current += 1;
+    setToast({ id: toastIdRef.current, kind, text });
+  }, []);
+
+  const dismissToast = useCallback(() => setToast(null), []);
 
   function handleSignOut() {
     clearStoredCreds();
@@ -61,12 +71,22 @@ function App() {
       <section className="add-product-section">
         <div className="container">
           {tab === 'products' ? (
-            <Products creds={creds} onSignedOut={handleSignOut} />
+            <Products
+              creds={creds}
+              onSignedOut={handleSignOut}
+              showToast={showToast}
+            />
           ) : (
-            <Categories creds={creds} onSignedOut={handleSignOut} />
+            <Categories
+              creds={creds}
+              onSignedOut={handleSignOut}
+              showToast={showToast}
+            />
           )}
         </div>
       </section>
+
+      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

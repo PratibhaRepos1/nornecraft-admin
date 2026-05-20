@@ -11,10 +11,12 @@ import {
   UPLOAD_URL,
   buildImageUrl,
 } from '../lib/api';
+import type { ToastKind } from '../components/Toast';
 
 interface ProductsProps {
   creds: AdminCreds;
   onSignedOut: () => void;
+  showToast: (text: string, kind: ToastKind) => void;
 }
 
 interface ProductForm {
@@ -37,7 +39,7 @@ const emptyForm: ProductForm = {
   description: '',
 };
 
-function Products({ creds, onSignedOut }: ProductsProps) {
+function Products({ creds, onSignedOut, showToast }: ProductsProps) {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,7 +48,6 @@ function Products({ creds, onSignedOut }: ProductsProps) {
   const [formData, setFormData] = useState<ProductForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -60,8 +61,9 @@ function Products({ creds, onSignedOut }: ProductsProps) {
     try {
       const res = await fetch(PRODUCTS_URL);
       if (!res.ok) throw new Error(`Failed to load products (${res.status})`);
-      const data = (await res.json()) as Product[];
-      setItems(Array.isArray(data) ? data : []);
+      const data = (await res.json()) as Product[] | { products?: Product[] };
+      const list = Array.isArray(data) ? data : data.products ?? [];
+      setItems(list);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load products');
     } finally {
@@ -73,8 +75,9 @@ function Products({ creds, onSignedOut }: ProductsProps) {
     try {
       const res = await fetch(CATEGORIES_URL);
       if (!res.ok) return;
-      const data = (await res.json()) as Category[];
-      setCategories(Array.isArray(data) ? data : []);
+      const data = (await res.json()) as Category[] | { categories?: Category[] };
+      const list = Array.isArray(data) ? data : data.categories ?? [];
+      setCategories(list);
     } catch {
       /* non-fatal — dropdown will just be empty */
     }
@@ -114,7 +117,6 @@ function Products({ creds, onSignedOut }: ProductsProps) {
       image: deriveImageFilename(p.image ?? ''),
       description: p.description ?? '',
     });
-    setMessage(null);
     setImageError(null);
     setImagePreviewBroken(false);
     setImagePreviewTs(Date.now());
@@ -206,7 +208,6 @@ function Products({ creds, onSignedOut }: ProductsProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    setMessage(null);
 
     const payload = {
       name: formData.name.trim(),
@@ -220,6 +221,7 @@ function Products({ creds, onSignedOut }: ProductsProps) {
 
     const url = editingId == null ? PRODUCTS_URL : `${PRODUCTS_URL}/${editingId}`;
     const method = editingId == null ? 'POST' : 'PUT';
+    const wasEditing = editingId != null;
 
     try {
       const res = await authedFetch(creds, url, {
@@ -234,20 +236,19 @@ function Products({ creds, onSignedOut }: ProductsProps) {
         throw new Error(handleAuthError(res.status, data.error || 'Failed to save product'));
       }
 
-      setMessage({
-        kind: 'success',
-        text:
-          editingId == null
-            ? `Product "${data.name ?? payload.name}" added successfully.`
-            : `Product "${data.name ?? payload.name}" updated.`,
-      });
+      showToast(
+        wasEditing
+          ? `Product "${data.name ?? payload.name}" updated.`
+          : `Product "${data.name ?? payload.name}" added successfully.`,
+        'success',
+      );
       resetForm();
       await loadProducts();
     } catch (err) {
-      setMessage({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Failed to save product',
-      });
+      showToast(
+        err instanceof Error ? err.message : 'Failed to save product',
+        'error',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -255,21 +256,20 @@ function Products({ creds, onSignedOut }: ProductsProps) {
 
   async function handleDelete(p: Product) {
     if (!window.confirm(`Delete product "${p.name}"?`)) return;
-    setMessage(null);
     try {
       const res = await authedFetch(creds, `${PRODUCTS_URL}/${p.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({} as { error?: string }));
         throw new Error(handleAuthError(res.status, data.error || 'Failed to delete product'));
       }
-      setMessage({ kind: 'success', text: `Product "${p.name}" deleted.` });
+      showToast(`Product "${p.name}" deleted.`, 'success');
       if (editingId === p.id) resetForm();
       await loadProducts();
     } catch (err) {
-      setMessage({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Failed to delete product',
-      });
+      showToast(
+        err instanceof Error ? err.message : 'Failed to delete product',
+        'error',
+      );
     }
   }
 
@@ -440,10 +440,6 @@ function Products({ creds, onSignedOut }: ProductsProps) {
               rows={4}
             />
           </div>
-
-          {message && (
-            <div className={`add-product-message ${message.kind}`}>{message.text}</div>
-          )}
 
           <div className="form-actions">
             <button
