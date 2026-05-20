@@ -39,11 +39,14 @@ const emptyForm: ProductForm = {
   description: '',
 };
 
+const PAGE_SIZE = 5;
+
 function Products({ creds, onSignedOut, showToast }: ProductsProps) {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const [formData, setFormData] = useState<ProductForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -105,6 +108,16 @@ function Products({ creds, onSignedOut, showToast }: ProductsProps) {
     setImagePreviewBroken(false);
     resetFileInput();
   }
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const rangeStart = items.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(safePage * PAGE_SIZE, items.length);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   function startEdit(p: Product) {
     setEditingId(p.id);
@@ -491,7 +504,7 @@ function Products({ creds, onSignedOut, showToast }: ProductsProps) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((p) => (
+                {pagedItems.map((p) => (
                   <tr key={p.id}>
                     <td>
                       {p.image ? (
@@ -532,6 +545,33 @@ function Products({ creds, onSignedOut, showToast }: ProductsProps) {
                 ))}
               </tbody>
             </table>
+
+            <div className="admin-pagination">
+              <span className="admin-pagination-info">
+                Showing {rangeStart}–{rangeEnd} of {items.length}
+              </span>
+              <div className="admin-pagination-controls">
+                <button
+                  type="button"
+                  className="admin-pagination-btn"
+                  onClick={() => setPage(safePage - 1)}
+                  disabled={safePage <= 1}
+                >
+                  Previous
+                </button>
+                <span className="admin-pagination-page">
+                  Page {safePage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="admin-pagination-btn"
+                  onClick={() => setPage(safePage + 1)}
+                  disabled={safePage >= totalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
